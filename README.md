@@ -1,0 +1,153 @@
+# r2h5ad — RDS / QS to h5ad Converter
+
+Convert single-cell data from R-native formats (`.rds`, `.qs`) to AnnData `.h5ad`, preserving metadata wherever possible.
+
+## Quick start
+
+```bash
+# 1. One-time setup
+conda env create -f environment.yml
+conda activate r2h5ad
+Rscript -e 'remotes::install_github("mojaveazure/seurat-disk")'
+
+# 2. Convert
+bash r2h5ad.sh your_data.rds output.h5ad
+
+# 3. Verify
+python3 -c "import scanpy; print(scanpy.read_h5ad('output.h5ad'))"
+```
+
+## How it works
+
+```
+input.rds  ──► detect_format.R ──► Seurat? ──yes──► convert_seuratdisk.R ──► .h5Seurat ──► .h5ad
+                   │                   │
+input.qs  ──► load_object()           no
+                                       │
+                                       └──► convert_mtx.R ──► matrix.mtx ──► .h5ad
+                                                (universal fallback)
+```
+
+| Method | Triggered for | Preserves |
+|--------|---------------|-----------|
+| **SeuratDisk** (primary) | Seurat objects | All assays, metadata, dimensions ⭐ |
+| **MTX export** (fallback) | Everything else | Count matrix + cell metadata |
+
+## Usage
+
+```bash
+bash r2h5ad.sh <input_file> [output_file] [options]
+```
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--method seuratdisk\|mtx` | Force a specific conversion method |
+| `--force` | Overwrite existing output |
+| `--verbose` | Print detailed debug logs |
+| `--assay NAME` | Assay to extract (default: `RNA`, for MTX fallback) |
+| `--no-cleanup` | Keep temp files on error (for debugging) |
+| `--skip-deps-check` | Skip pre-flight dependency verification |
+
+### Examples
+
+```bash
+# Basic Seurat RDS conversion
+bash r2h5ad.sh data/obj.rds
+
+# QS file with custom output path
+bash r2h5ad.sh data/obj.qs results/processed.h5ad --force
+
+# Force MTX fallback (e.g. for SingleCellExperiment)
+bash r2h5ad.sh data/sce.rds --method mtx
+
+# Debug a failing conversion
+bash r2h5ad.sh data/obj.rds --verbose --no-cleanup
+
+# From Windows host (via WSL)
+wsl bash D:/Projects/r2h5ad/r2h5ad.sh D:/data/obj.rds D:/output.h5ad
+```
+
+## Environment & dependencies
+
+### Option A — Conda (recommended)
+
+```bash
+conda env create -f environment.yml
+conda activate r2h5ad
+Rscript -e 'remotes::install_github("mojaveazure/seurat-disk")'
+```
+
+If you already have a conda env with the needed packages, point the tool at it:
+
+```bash
+export R2H5AD_CONDA_ENV=my_existing_env
+bash r2h5ad.sh ...
+```
+
+The tool automatically finds conda installations at common paths (`~/miniforge3`, `~/miniconda3`, `~/anaconda3`, `/opt/conda`).
+
+### Option B — Manual (no conda)
+
+R packages (any R ≥4.0):
+```r
+install.packages(c("Seurat", "qs", "jsonlite", "Matrix"))
+remotes::install_github("mojaveazure/seurat-disk")
+```
+
+Python packages:
+```bash
+pip install anndata scanpy
+```
+
+The tool only requires `Rscript` and `python3` on `$PATH` — no conda dependency.
+
+### Required packages
+
+| Ecosystem | Package | Purpose |
+|-----------|---------|---------|
+| R | `Seurat` (≥5.0) | Object loading / assay handling |
+| R | `SeuratDisk` | Primary conversion path (Seurat → h5ad) |
+| R | `qs` | QS file format support |
+| R | `jsonlite` | JSON output for format detection |
+| R | `Matrix` | Sparse matrix handling |
+| R | `hdf5r` | HDF5 backend (SeuratDisk dependency) |
+| Python | `anndata` | h5ad read/write |
+| Python | `scanpy` | MTX loading (fallback path) |
+
+## Supported object types
+
+| Object class | Primary method | Fallback |
+|-------------|---------------|----------|
+| `Seurat` (v3/v4/v5) | SeuratDisk | MTX export |
+| `SingleCellExperiment` | — | MTX export |
+| `SummarizedExperiment` | — | MTX export |
+| `dgCMatrix` / `Matrix` (raw) | — | MTX export |
+| Named list (with `$counts`) | — | MTX export |
+
+Seurat v5 `Assay5` objects are automatically downgraded to v3 `Assay` for SeuratDisk compatibility.
+
+## Troubleshooting
+
+**"Missing R packages: Seurat SeuratDisk qs"**
+→ Run the dependency setup (Option A or B above), or use `--skip-deps-check` if you're sure they're installed.
+
+**"SaveH5Seurat failed: unknown type"**
+→ Your Seurat object uses Assay5 (v5 format). The tool handles this automatically — if it doesn't, update SeuratDisk:
+`Rscript -e 'remotes::install_github("mojaveazure/seurat-disk")'`
+
+**"Rscript not found on PATH"**
+→ R is not installed or not on `$PATH`. Install R (≥4.0) or activate a conda environment.
+
+**Large file warnings (>2GB)**
+→ RDS has an internal 2GB stability limit. Use QS format for large objects; the tool handles both identically.
+
+**File not found on Windows**
+→ Use forward slashes: `wsl bash D:/Projects/r2h5ad/r2h5ad.sh ...`
+
+## Related
+
+- [SeuratDisk](https://mojaveazure.github.io/seurat-disk/)
+- [Scanpy file formats](https://scanpy.readthedocs.io/en/stable/api/scanpy.read.html)
+- Pipeline reference: `rds_format_support.md` (in this directory)

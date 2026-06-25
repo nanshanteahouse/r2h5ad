@@ -1,0 +1,21 @@
+name: r2h5ad
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.10
+  - r-base>=4.0
+  - r-seurat
+  - r-seuratobject
+  - r-qs
+  - r-hdf5r
+  - r-jsonlite
+  - r-matrix
+  - r-remotes
+  - anndata
+  - scanpy
+  - pip
+  - pip:
+    # SeuratDisk must be installed from GitHub (not on conda/pypi)
+    # Run after env creation:
+    #   Rscript -e 'remotes::install_github("mojaveazure/seurat-disk")'

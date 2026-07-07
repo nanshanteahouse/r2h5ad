@@ -3,19 +3,15 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
-  - python=3.10
-  - r-base>=4.0
-  - r-seurat
+  - python=3.12
+  - r-base>=4.1
+  - r-seurat>=5.0
   - r-seuratobject
   - r-qs
   - r-hdf5r
   - r-jsonlite
   - r-matrix
   - r-remotes
-  - anndata
-  - scanpy
+  - anndata>=0.12
+  - scanpy>=1.12
   - pip
-  - pip:
-    # SeuratDisk must be installed from GitHub (not on conda/pypi)
-    # Run after env creation:
-    #   Rscript -e 'remotes::install_github("mojaveazure/seurat-disk")'

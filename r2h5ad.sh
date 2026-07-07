@@ -145,6 +145,8 @@ resolve_output() {
         local dir="$(dirname "$input")"
         local base="$(basename "$input")"
         local stem="${base%.*}"
+        stem="${stem%.qs}"
+        stem="${stem%.rds}"
         if [ "$dir" = "." ]; then echo "${stem}.h5ad"
         else echo "${dir}/${stem}.h5ad"; fi
     fi

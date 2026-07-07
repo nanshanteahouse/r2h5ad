@@ -53,19 +53,20 @@ load_rds <- function(path) {
   return(obj)
 }
 
-#' Load a QS file
-#' @param path Path to .qs file
+#' Load a QS file from a gzipped source
+#' @param path Path to .qs.gz file
 #' @return Deserialized R object
-load_qs <- function(path) {
-  if (!requireNamespace("qs", quietly = TRUE)) {
-    stop("Package 'qs' is required. Run: install.packages('qs')")
-  }
-  if (!file.exists(path)) {
-    stop(sprintf("File not found: %s", path))
+load_qs_gz <- function(path) {
+  tmp_qs <- tempfile(fileext = ".qs")
+  on.exit(unlink(tmp_qs), add = TRUE)
+  log_info(sprintf("Decompressing: %s", path))
+  ret <- system2("gunzip", c("-c", shQuote(path)), stdout = tmp_qs)
+  if (ret != 0) {
+    stop(sprintf("Failed to decompress %s — is gunzip installed?", path))
   }
   log_info(sprintf("Loading QS: %s", path))
   obj <- tryCatch(
-    qs::qread(path),
+    qs::qread(tmp_qs),
     error = function(e) {
       stop(sprintf("Failed to read QS file: %s\n  Reason: %s", path, e$message))
     }
@@ -74,11 +75,42 @@ load_qs <- function(path) {
   return(obj)
 }
 
+#' Load an RDS file from a gzipped source
+#' @param path Path to .rds.gz file
+#' @return Deserialized R object
+load_rds_gz <- function(path) {
+  log_info(sprintf("Loading RDS (gzipped): %s", path))
+  obj <- tryCatch(
+    readRDS(gzfile(path)),
+    error = function(e) {
+      stop(sprintf("Failed to read gzipped RDS: %s\n  Reason: %s", path, e$message))
+    }
+  )
+  log_info(sprintf("Object size in memory: %.1f MB", object.size(obj) / 1e6))
+  return(obj)
+}
+
 #' Auto-detect format and load
-#' @param path Path to .rds or .qs file
+#' Supports .rds, .qs, .rds.gz, .qs.gz
+#' @param path Path to input file
 #' @return Deserialized R object
 load_object <- function(path) {
   ext <- tolower(tools::file_ext(path))
+
+  # Handle gzipped files
+  if (ext == "gz") {
+    inner_path <- tools::file_path_sans_ext(path)
+    inner_ext <- tolower(tools::file_ext(inner_path))
+    if (!inner_ext %in% c("rds", "qs")) {
+      stop(sprintf("Unsupported compressed format: .%s.gz (expected .rds.gz or .qs.gz)", inner_ext))
+    }
+    if (inner_ext == "rds") {
+      return(load_rds_gz(path))
+    } else {
+      return(load_qs_gz(path))
+    }
+  }
+
   if (ext == "rds") {
     return(load_rds(path))
   } else if (ext == "qs") {

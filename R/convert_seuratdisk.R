@@ -35,6 +35,47 @@ for (pkg in c("Seurat", "SeuratDisk")) {
   }
 }
 
+# --- SeuratDisk compatibility patch: translate slot= -> layer= ---------------
+# SeuratDisk is unmaintained and uses the slot= argument which was made defunct
+# in SeuratObject 5.3.0+. We monkey-patch GetAssayData/SetAssayData to translate
+# slot= -> layer= so SaveH5Seurat works with modern SeuratObject.
+.r2h5ad_patch_sd <- local({
+  if (packageVersion("SeuratObject") >= "5.3.0") {
+    log_info("Patching GetAssayData/SetAssayData slot->layer for SeuratDisk compat...")
+    .orig_get <- SeuratObject::GetAssayData
+    .orig_set <- SeuratObject::SetAssayData
+
+    patched_get <- function(object, layer = "data", slot, ...) {
+      if (!missing(slot)) layer <- slot
+      .orig_get(object = object, layer = layer, ...)
+    }
+    patched_set <- function(object, layer, slot, ...) {
+      if (!missing(slot)) layer <- slot
+      .orig_set(object = object, layer = layer, ...)
+    }
+
+    # Patch in SeuratObject namespace (for direct callers)
+    assignInNamespace("GetAssayData", patched_get, ns = "SeuratObject")
+    assignInNamespace("SetAssayData", patched_set, ns = "SeuratObject")
+
+    # Patch in SeuratDisk import environment (for SeuratDisk internal calls)
+    # SeuratDisk imports these from SeuratObject but byte-compilation can cache
+    # the original references. Unlocking the import bindings and replacing them
+    # ensures SeuratDisks SaveH5Seurat path uses our patched versions.
+    sd_imports <- parent.env(asNamespace("SeuratDisk"))
+    for (fname in c("GetAssayData", "SetAssayData")) {
+      if (exists(fname, envir = sd_imports, inherits = FALSE)) {
+        patched <- if (fname == "GetAssayData") patched_get else patched_set
+        if (bindingIsLocked(fname, sd_imports)) unlockBinding(fname, sd_imports)
+        assign(fname, patched, envir = sd_imports)
+        lockBinding(fname, sd_imports)
+      }
+    }
+    TRUE
+  } else {
+    FALSE
+  }
+})
 # --- Load object -------------------------------------------------------------
 log_info(sprintf("Loading: %s", input_file))
 obj <- load_object(input_file)
@@ -76,7 +117,7 @@ for (aname in assay_names) {
     # Copy data layer back if it existed
     if (!is.null(data_mat)) {
       tryCatch({
-        obj[[aname]] <- Seurat::SetAssayData(obj[[aname]], slot = "data", new.data = data_mat)
+        obj[[aname]] <- SeuratObject::SetAssayData(obj[[aname]], layer = "data", new.data = data_mat)
       }, error = function(e) log_warn(sprintf("Could not copy data layer: %s", e$message)))
     }
   }

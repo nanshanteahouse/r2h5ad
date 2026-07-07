@@ -27,7 +27,13 @@ input_file <- args[1]
 
 # --- Detect file type --------------------------------------------------------
 ext <- tolower(tools::file_ext(input_file))
-if (!ext %in% c("rds", "qs")) {
+if (ext == "gz") {
+  inner_ext <- tolower(tools::file_ext(tools::file_path_sans_ext(input_file)))
+  if (!inner_ext %in% c("rds", "qs")) {
+    stop(sprintf("Unsupported compressed format: .%s.gz (expected .rds.gz or .qs.gz)", inner_ext))
+  }
+  ext <- inner_ext
+} else if (!ext %in% c("rds", "qs")) {
   stop(sprintf("Unsupported file extension: .%s (expected .rds or .qs)", ext))
 }
 

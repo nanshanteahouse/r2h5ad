@@ -1,1 +1,9 @@
 notes/
+.claude/
+.omo/
+projects/
+
+# R IDE artifacts
+.Rproj.user
+.Rhistory
+.RData

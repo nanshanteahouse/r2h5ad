@@ -1,6 +1,6 @@
 # r2h5ad — RDS / QS to h5ad Converter
 
-Convert single-cell data from R-native formats (`.rds`, `.qs`) to AnnData `.h5ad`, preserving metadata wherever possible.
+Convert single-cell data from R-native formats (`.rds`, `.qs`, `.rds.gz`, `.qs.gz`) to AnnData `.h5ad`, preserving metadata wherever possible.
 
 ## Quick start
 
@@ -19,14 +19,12 @@ python3 -c "import scanpy; print(scanpy.read_h5ad('output.h5ad'))"
 
 ## How it works
 
-```
-input.rds  ──► detect_format.R ──► Seurat? ──yes──► convert_seuratdisk.R ──► .h5Seurat ──► .h5ad
-                   │                   │
-input.qs  ──► load_object()           no
-                                       │
-                                       └──► convert_mtx.R ──► matrix.mtx ──► .h5ad
-                                                (universal fallback)
-```
+input.rds/.rds.gz  ──► detect_format.R ──► Seurat? ──yes──► convert_seuratdisk.R ──► .h5Seurat ──► .h5ad
+                       │                   │
+input.qs/.qs.gz  ──► load_object()           no
+                                               │
+                                               └──► convert_mtx.R ──► matrix.mtx ──► .h5ad
+                                                        (universal fallback)
 
 | Method | Triggered for | Preserves |
 |--------|---------------|-----------|
@@ -113,8 +111,8 @@ The tool only requires `Rscript` and `python3` on `$PATH` — no conda dependenc
 | R | `jsonlite` | JSON output for format detection |
 | R | `Matrix` | Sparse matrix handling |
 | R | `hdf5r` | HDF5 backend (SeuratDisk dependency) |
-| Python | `anndata` | h5ad read/write |
-| Python | `scanpy` | MTX loading (fallback path) |
+| Python | `anndata` (≥0.12) | h5ad read/write |
+| Python | `scanpy` (≥1.12) | MTX loading (fallback path) |
 
 ## Supported object types
 
@@ -133,8 +131,8 @@ Seurat v5 `Assay5` objects are automatically downgraded to v3 `Assay` for Seurat
 **"Missing R packages: Seurat SeuratDisk qs"**
 → Run the dependency setup (Option A or B above), or use `--skip-deps-check` if you're sure they're installed.
 
-**"SaveH5Seurat failed: unknown type"**
-→ Your Seurat object uses Assay5 (v5 format). The tool handles this automatically — if it doesn't, update SeuratDisk:
+**"SaveH5Seurat failed: slot deprecated in SeuratObject 5.3.0+"**
+→ SeuratObject defuncted the `slot=` argument. The tool auto-patches SeuratDisk's internal calls, but if errors persist reinstall SeuratDisk:
 `Rscript -e 'remotes::install_github("mojaveazure/seurat-disk")'`
 
 **"Rscript not found on PATH"**
@@ -145,6 +143,9 @@ Seurat v5 `Assay5` objects are automatically downgraded to v3 `Assay` for Seurat
 
 **File not found on Windows**
 → Use forward slashes: `wsl bash D:/Projects/r2h5ad/r2h5ad.sh ...`
+
+**".qs.gz / .rds.gz support"**
+→ The tool auto-decompresses `.qs.gz` and `.rds.gz` files. Use them directly as input (no manual decompression needed).
 
 ## Related
 

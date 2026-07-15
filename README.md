@@ -1,6 +1,6 @@
-# r2h5ad — RDS / QS to h5ad Converter
+# r2h5ad — RDS / QS / Rdata to h5ad Converter
 
-Convert single-cell data from R-native formats (`.rds`, `.qs`, `.rds.gz`, `.qs.gz`) to AnnData `.h5ad`, preserving metadata wherever possible.
+Convert single-cell data from R-native formats (`.rds`, `.qs`, `.rds.gz`, `.qs.gz`, `.Rdata`, `.RData`) to AnnData `.h5ad`, preserving metadata wherever possible.
 
 ## Quick start
 
@@ -20,16 +20,20 @@ python3 -c "import scanpy; print(scanpy.read_h5ad('output.h5ad'))"
 ## How it works
 
 input.rds/.rds.gz  ──► detect_format.R ──► Seurat? ──yes──► convert_seuratdisk.R ──► .h5Seurat ──► .h5ad
-                       │                   │
-input.qs/.qs.gz  ──► load_object()           no
-                                               │
-                                               └──► convert_mtx.R ──► matrix.mtx ──► .h5ad
-                                                        (universal fallback)
+                     │                   │
+input.qs/.qs.gz  ────► load_object()       no
+                     │                       │
+                     │                       └──► convert_mtx.R ──► matrix.mtx ──► .h5ad
+                     │                                (universal fallback)
+                     │
+input.Rdata/.rda  ──► convert_rdata.R ──► MTX + metadata ──► assemble_h5ad.py ──► .h5ad
+                              (legacy workspace dump)
 
 | Method | Triggered for | Preserves |
 |--------|---------------|-----------|
-| **SeuratDisk** (primary) | Seurat objects | All assays, metadata, dimensions ⭐ |
-| **MTX export** (fallback) | Everything else | Count matrix + cell metadata |
+| **SeuratDisk** (primary for RDS/QS) | Seurat objects | All assays, metadata, dimensions ⭐ |
+| **MTX export** (fallback for RDS/QS) | Everything else (SCE, matrix, list) | Count matrix + cell metadata |
+| **Rdata export** (for .Rdata) | Workspace dump objects | Count matrix + PCA/t-SNE/UMAP metadata |
 
 ## Usage
 
@@ -41,13 +45,15 @@ bash r2h5ad.sh <input_file> [output_file] [options]
 
 | Flag | Description |
 |------|-------------|
-| `--method seuratdisk\|mtx` | Force a specific conversion method |
+| `--method seuratdisk\|mtx` | Force a specific conversion method (serialized objects only) |
 | `--force` | Overwrite existing output |
 | `--verbose` | Print detailed debug logs |
 | `--assay NAME` | Assay to extract (default: `RNA`, for MTX fallback) |
 | `--no-cleanup` | Keep temp files on error (for debugging) |
 | `--skip-deps-check` | Skip pre-flight dependency verification |
-
+| `--list` | List objects in .Rdata and exit (Rdata only) |
+| `--count-object NAME` | Count matrix object name (Rdata only, auto-detected) |
+| `--pca-object / --tsne-object / --umap-object NAME` | Embedding object names (Rdata only) |
 ### Examples
 
 ```bash
@@ -63,9 +69,17 @@ bash r2h5ad.sh data/sce.rds --method mtx
 # Debug a failing conversion
 bash r2h5ad.sh data/obj.rds --verbose --no-cleanup
 
+# Convert .Rdata workspace dump
+bash r2h5ad.sh data/obj.Rdata
+
+# List objects inside an .Rdata file
+bash r2h5ad.sh data/obj.Rdata --list
+
+# Specify count matrix in Rdata with embeddings
+bash r2h5ad.sh data/obj.Rdata --count-object expr --pca-object pca_result
+
 # From Windows host (via WSL)
 wsl bash D:/Projects/r2h5ad/r2h5ad.sh D:/data/obj.rds D:/output.h5ad
-```
 
 ## Environment & dependencies
 
@@ -114,16 +128,14 @@ The tool only requires `Rscript` and `python3` on `$PATH` — no conda dependenc
 | Python | `anndata` (≥0.12) | h5ad read/write |
 | Python | `scanpy` (≥1.12) | MTX loading (fallback path) |
 
-## Supported object types
-
-| Object class | Primary method | Fallback |
+| Object class / format | Primary method | Fallback |
 |-------------|---------------|----------|
 | `Seurat` (v3/v4/v5) | SeuratDisk | MTX export |
 | `SingleCellExperiment` | — | MTX export |
 | `SummarizedExperiment` | — | MTX export |
 | `dgCMatrix` / `Matrix` (raw) | — | MTX export |
 | Named list (with `$counts`) | — | MTX export |
-
+| `.Rdata` / `.RData` / `.rda` workspace dump | Rdata export (MTX) | — |
 Seurat v5 `Assay5` objects are automatically downgraded to v3 `Assay` for SeuratDisk compatibility.
 
 ## Troubleshooting

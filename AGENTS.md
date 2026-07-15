@@ -1,22 +1,27 @@
 # AGENTS.md — r2h5ad
 
-Shell+R+Python CLI for converting single-cell RDS/QS files to h5ad (AnnData).
+Shell+R+Python CLI for converting single-cell RDS/QS/Rdata files to h5ad (AnnData).
 
 ## Entrypoint
 
-`bash r2h5ad.sh <input> [output] [options]` — do not run `R/*.R` scripts directly. The shell script handles conda activation, temp dirs, cleanup, and validation.
+`bash r2h5ad.sh <input> [output] [options]` — single entry point for `.rds`, `.qs`, `.Rdata` files. Auto-detects format by extension. Do not run `R/*.R` scripts directly.
 
 ## Architecture
 
 ```
-r2h5ad.sh  ──► detect_format.R  ──► Seurat? ──yes──► convert_seuratdisk.R  →  .h5Seurat  →  .h5ad
-                                      │
-                                      no ──► convert_mtx.R  →  matrix.mtx  →  Python assembly  →  .h5ad
+r2h5ad.sh  ── detect_format.R  ── Seurat? ──yes── convert_seuratdisk.R  →  .h5Seurat  →  .h5ad
+             │                   │
+             .rds/.qs ──── load_object()    no
+             │                                │
+             │                                └── convert_mtx.R  →  matrix.mtx  →  Python assembly  →  .h5ad
+             │
+             .Rdata ─── convert_rdata.R  →  MTX + metadata  →  assemble_h5ad.py  →  .h5ad
 ```
 
-**Two conversion paths:**
-- **SeuratDisk** (primary): intermediate `.h5Seurat` file → `SeuratDisk::Convert()` → rename to target. Preserves assays, metadata, reductions.
-- **MTX export** (fallback): writes MTX + features.tsv + barcodes.tsv to temp dir → Python script calls `scanpy.read().T` → attaches metadata CSV → writes h5ad.
+**Three conversion paths:**
+- **SeuratDisk** (primary for RDS/QS): intermediate `.h5Seurat` file → `SeuratDisk::Convert()` → rename to target. Preserves assays, metadata, reductions.
+- **MTX export** (fallback for RDS/QS): writes MTX + features.tsv + barcodes.tsv to temp dir → Python script calls `scanpy.read().T` → attaches metadata CSV → writes h5ad.
+- **Rdata export** (for .Rdata/.RData/.rda): calls `convert_rdata.R` to load workspace dump, extract MTX + optional embeddings → `assemble_h5ad.py` to build h5ad.
 
 ## Critical quirks
 
